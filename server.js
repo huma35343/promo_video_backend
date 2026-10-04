@@ -1,37 +1,41 @@
 const express = require('express');
-const path = require('path');
+const cors = require('cors');
+const Replicate = require('replicate');
+
 const app = express();
-const PORT = process.env.PORT || 3000;
-
+app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname)));
 
-// API Route for health check
-app.get('/api/health', (req, res) => {
-    res.json({ status: 'connected' });
+const replicate = new Replicate({
+  auth: process.env.REPLICATE_API_TOKEN,
 });
 
-// Video Generation Route
-app.post('/generate', (req, res) => {
+app.post('/generate-video', async (req, res) => {
+  try {
     const { prompt } = req.body;
-    
     if (!prompt) {
-        return res.status(400).json({ message: 'Kripya topic dakhil karein!' });
+      return res.status(400).json({ error: 'Prompt is required' });
     }
 
-    // Returning success with video output
-    res.json({
-        message: 'Video generate ho gayi hai!',
-        videoUrl: 'https://www.w3schools.com/html/mov_bbb.mp4'
-    });
+    // Call Replicate model for video generation
+    const output = await replicate.run(
+      "minimax/video-01",
+      {
+        input: {
+          prompt: prompt
+        }
+      }
+    );
+
+    res.json({ videoUrl: output });
+  } catch (error) {
+    console.error('Error generating video:', error);
+    res.status(500).json({ error: 'Failed to generate video' });
+  }
 });
 
-// Serve frontend for all other paths
-app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
-});
-
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+  console.log(`Server is running on port ${PORT}`);
 });
-    
+        
