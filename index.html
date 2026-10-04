@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Business Brand AI - Promo Video</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div class="container">
+        <h1>🎬 Business Brand AI</h1>
+        <p class="subtitle">3D Character Promo Video Generator</p>
+
+        <!-- Backend Status Card -->
+        <div class="status-card">
+            <h3>Backend Connection Status:</h3>
+            <p id="server-status">Connecting to Render Server...</p>
+        </div>
+
+        <!-- Video Generator Form -->
+        <div class="form-card">
+            <label for="prompt">अपने प्रोमो वीडियो का टॉपिक दर्ज करें:</label>
+            <input type="text" id="prompt" placeholder="उदा. 3D AI character promoting my brand...">
+            
+            <button id="generate-btn">Video Generate Karein</button>
+        </div>
+
+        <!-- Result Section -->
+        <div id="result-box" class="result-card hidden">
+            <h3>Aapka Video Output:</h3>
+            <div id="video-preview"></div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
