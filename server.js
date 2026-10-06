@@ -1,4 +1,5 @@
-const express = require('express');
+
+        const express = require('express');
 const cors = require('cors');
 const Replicate = require('replicate');
 const gTTS = require('gtts');
@@ -16,6 +17,7 @@ const upload = multer({ dest: 'uploads/' });
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 app.use('/public', express.static(path.join(__dirname, 'public')));
 
 if (!fs.existsSync('./public')) fs.mkdirSync('./public');
@@ -31,13 +33,20 @@ app.get('/', (req, res) => {
 
 app.post('/generate-promo', upload.single('image'), async (req, res) => {
   try {
-    const { prompt, voiceText, voiceGender } = req.body;
-    let imageUri = null;
+    // Prompt aur VoiceText ko sahi se read karein (Fallback ke saath)
+    const prompt = req.body && req.body.prompt ? req.body.prompt.trim() : "";
+    const voiceText = req.body && req.body.voiceText ? req.body.voiceText.trim() : "";
+    const voiceGender = req.body && req.body.voiceGender ? req.body.voiceGender : "female";
 
+    if (!prompt) {
+      return res.status(400).json({ error: "Please enter a valid video prompt." });
+    }
+
+    let imageUri = null;
     if (req.file) {
       const fileData = fs.readFileSync(req.file.path);
       imageUri = `data:${req.file.mimetype};base64,${fileData.toString('base64')}`;
-      fs.unlinkSync(req.file.path);
+      fs.unlinkSync(req.file.path); // Clean up temp file
     }
 
     console.log('Generating 15-sec multi-shot video...');
@@ -88,10 +97,9 @@ app.post('/generate-promo', upload.single('image'), async (req, res) => {
         .on('error', reject);
     });
 
-    // 3. Generate Voiceover Audio (Male / Female handle)
+    // 3. Generate Voiceover Audio
     const speechText = voiceText || "Special announcement video!";
-    // Hindi voice pitch/speed adjustments or accent tuning
-    const langCode = (voiceGender === 'male') ? 'hi' : 'hi'; 
+    const langCode = 'hi'; 
     const gtts = new gTTS(speechText, langCode);
     const audioPath = path.join(__dirname, 'public', 'voice.mp3');
 
@@ -99,7 +107,7 @@ app.post('/generate-promo', upload.single('image'), async (req, res) => {
       gtts.save(audioPath, (err) => err ? reject(err) : resolve());
     });
 
-    // 4. Final Audio + Video Merge with 9:16 format preservation
+    // 4. Final Audio + Video Merge
     const finalOutputPath = path.join(__dirname, 'public', 'final_15sec_promo.mp4');
 
     ffmpeg()
@@ -130,4 +138,4 @@ const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
-                       
+      
