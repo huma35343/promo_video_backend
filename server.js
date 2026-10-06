@@ -36,7 +36,7 @@ app.post('/generate-promo', upload.single('image'), async (req, res) => {
     const voiceText = (req.body && req.body.voiceText) ? req.body.voiceText.trim() : "";
 
     if (!prompt) {
-      return res.status(400).json({ error: "Prompt zaroori hai! Kripya prompt box me text bharein." });
+      return res.status(400).json({ error: "Prompt zaroori hai!" });
     }
 
     let imageUri = null;
@@ -46,50 +46,28 @@ app.post('/generate-promo', upload.single('image'), async (req, res) => {
       fs.unlinkSync(req.file.path);
     }
 
-    console.log('Generating 15-sec multi-shot video...');
+    console.log('Generating video...');
 
-    const videoPaths = [];
-    for (let i = 0; i < 3; i++) {
-      console.log(`Generating Clip ${i + 1}/3...`);
-      const inputParams = {
-        prompt: `${prompt}, clip ${i+1}, vertical video, 9:16 aspect ratio, portrait view`,
-        prompt_optimizer: true
-      };
+    const inputParams = {
+      prompt: `${prompt}, vertical video, 9:16 aspect ratio, portrait view`,
+      prompt_optimizer: true
+    };
 
-      if (imageUri) {
-        inputParams.first_frame_image = imageUri;
-      }
-
-      const output = await replicate.run("minimax/video-01", { input: inputParams });
-      const videoUrl = Array.isArray(output) ? output[0] : output;
-
-      const clipPath = path.join(__dirname, 'public', `clip_${i}.mp4`);
-      const file = fs.createWriteStream(clipPath);
-
-      await new Promise((resolve, reject) => {
-        https.get(videoUrl, (response) => {
-          response.pipe(file);
-          file.on('finish', () => file.close(resolve));
-        }).on('error', reject);
-      });
-
-      videoPaths.push(clipPath);
+    if (imageUri) {
+      inputParams.first_frame_image = imageUri;
     }
 
-    const listFilePath = path.join(__dirname, 'public', 'files.txt');
-    const fileContent = videoPaths.map(p => `file '${p}'`).join('\n');
-    fs.writeFileSync(listFilePath, fileContent);
+    const output = await replicate.run("minimax/video-01", { input: inputParams });
+    const videoUrl = Array.isArray(output) ? output[0] : output;
 
-    const mergedVideoPath = path.join(__dirname, 'public', 'merged_15sec.mp4');
+    const rawVideoPath = path.join(__dirname, 'public', 'raw_video.mp4');
+    const file = fs.createWriteStream(rawVideoPath);
 
     await new Promise((resolve, reject) => {
-      ffmpeg()
-        .input(listFilePath)
-        .inputOptions(['-f concat', '-safe 0'])
-        .outputOptions('-c copy')
-        .save(mergedVideoPath)
-        .on('end', resolve)
-        .on('error', reject);
+      https.get(videoUrl, (response) => {
+        response.pipe(file);
+        file.on('finish', () => file.close(resolve));
+      }).on('error', reject);
     });
 
     const speechText = voiceText || "Special promo video!";
@@ -100,19 +78,19 @@ app.post('/generate-promo', upload.single('image'), async (req, res) => {
       gtts.save(audioPath, (err) => err ? reject(err) : resolve());
     });
 
-    const finalOutputPath = path.join(__dirname, 'public', 'final_15sec_promo.mp4');
+    const finalOutputPath = path.join(__dirname, 'public', 'final_promo.mp4');
 
     ffmpeg()
-      .input(mergedVideoPath)
+      .input(rawVideoPath)
       .input(audioPath)
       .outputOptions(['-c:v copy', '-c:a aac', '-shortest'])
       .save(finalOutputPath)
       .on('end', () => {
-        const fullVideoUrl = `${req.protocol}://${req.get('host')}/public/final_15sec_promo.mp4?t=${Date.now()}`;
+        const fullVideoUrl = `${req.protocol}://${req.get('host')}/public/final_promo.mp4?t=${Date.now()}`;
         res.json({
           success: true,
           videoUrl: fullVideoUrl,
-          message: '15-second video generated successfully!'
+          message: 'Video generated successfully!'
         });
       })
       .on('error', (err) => {
@@ -130,6 +108,4 @@ const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
-        
-
-      
+  
