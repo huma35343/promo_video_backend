@@ -7,18 +7,19 @@ const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path;
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
+const multer = require('multer');
 
 ffmpeg.setFfmpegPath(ffmpegPath);
+
+const upload = multer({ dest: 'uploads/' });
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 app.use('/public', express.static(path.join(__dirname, 'public')));
 
-// Public folder ensure karein
-if (!fs.existsSync('./public')) {
-  fs.mkdirSync('./public');
-}
+if (!fs.existsSync('./public')) fs.mkdirSync('./public');
+if (!fs.existsSync('./uploads')) fs.mkdirSync('./uploads');
 
 const replicate = new Replicate({
   auth: process.env.REPLICATE_API_TOKEN,
@@ -28,78 +29,97 @@ app.get('/', (req, res) => {
   res.send({ status: 'Server is Online & Ready' });
 });
 
-app.post('/generate-promo', async (req, res) => {
+app.post('/generate-promo', upload.single('image'), async (req, res) => {
   try {
     const { prompt, voiceText } = req.body;
+    let imageUri = null;
 
-    if (!prompt) {
-      return res.status(400).json({ error: 'Prompt zaroori hai!' });
+    if (req.file) {
+      const fileData = fs.readFileSync(req.file.path);
+      imageUri = `data:${req.file.mimetype};base64,${fileData.toString('base64')}`;
+      fs.unlinkSync(req.file.path);
     }
 
-    console.log('Generating AI Video Clip...');
+    console.log('Generating 15-sec multi-shot video...');
 
-    // 1. Generate Video from Replicate
-    const output = await replicate.run(
-      "minimax/video-01",
-      {
-        input: {
-          prompt: prompt + ", vertical video, 9:16 aspect ratio, portrait view",
-          prompt_optimizer: true
-        }
+    // 1. Generate 3 Clips of 5 seconds each
+    const videoPaths = [];
+    for (let i = 0; i < 3; i++) {
+      console.log(`Generating Clip ${i + 1}/3...`);
+      const inputParams = {
+        prompt: `${prompt}, clip ${i+1}, vertical video, 9:16 aspect ratio`,
+        prompt_optimizer: true
+      };
+
+      if (imageUri) {
+        inputParams.first_frame_image = imageUri;
       }
-    );
 
-    const videoUrl = Array.isArray(output) ? output[0] : output;
-    
-    // Download raw video to server
-    const rawVideoPath = path.join(__dirname, 'public', 'raw_video.mp4');
-    const file = fs.createWriteStream(rawVideoPath);
-    
+      const output = await replicate.run("minimax/video-01", { input: inputParams });
+      const videoUrl = Array.isArray(output) ? output[0] : output;
+
+      const clipPath = path.join(__dirname, 'public', `clip_${i}.mp4`);
+      const file = fs.createWriteStream(clipPath);
+
+      await new Promise((resolve, reject) => {
+        https.get(videoUrl, (response) => {
+          response.pipe(file);
+          file.on('finish', () => file.close(resolve));
+        }).on('error', reject);
+      });
+
+      videoPaths.push(clipPath);
+    }
+
+    // 2. Stitch Clips using FFmpeg
+    const listFilePath = path.join(__dirname, 'public', 'files.txt');
+    const fileContent = videoPaths.map(p => `file '${p}'`).join('\n');
+    fs.writeFileSync(listFilePath, fileContent);
+
+    const mergedVideoPath = path.join(__dirname, 'public', 'merged_15sec.mp4');
+
     await new Promise((resolve, reject) => {
-      https.get(videoUrl, (response) => {
-        response.pipe(file);
-        file.on('finish', () => {
-          file.close(resolve);
-        });
-      }).on('error', reject);
+      ffmpeg()
+        .input(listFilePath)
+        .inputOptions(['-f concat', '-safe 0'])
+        .outputOptions('-c copy')
+        .save(mergedVideoPath)
+        .on('end', resolve)
+        .on('error', reject);
     });
 
-    // 2. Generate Voiceover Audio
-    const speechText = voiceText || "Special discount offer available now!";
+    // 3. Generate Voiceover Audio
+    const speechText = voiceText || "Special discount offer available now! Visit today.";
     const gtts = new gTTS(speechText, 'hi');
     const audioPath = path.join(__dirname, 'public', 'voice.mp3');
-    
+
     await new Promise((resolve, reject) => {
-      gtts.save(audioPath, (err) => {
-        if (err) reject(err);
-        else resolve();
-      });
+      gtts.save(audioPath, (err) => err ? reject(err) : resolve());
     });
 
-    // 3. Merge Audio and Video using FFmpeg
-    const finalOutputPath = path.join(__dirname, 'public', 'final_promo.mp4');
+    // 4. Final Audio + Video Merge
+    const finalOutputPath = path.join(__dirname, 'public', 'final_15sec_promo.mp4');
 
     ffmpeg()
-      .input(rawVideoPath)
+      .input(mergedVideoPath)
       .input(audioPath)
       .outputOptions(['-c:v copy', '-c:a aac', '-shortest'])
       .save(finalOutputPath)
       .on('end', () => {
-        console.log('FFmpeg merging finished!');
-        const fullVideoUrl = `${req.protocol}://${req.get('host')}/public/final_promo.mp4?t=${Date.now()}`;
+        const fullVideoUrl = `${req.protocol}://${req.get('host')}/public/final_15sec_promo.mp4?t=${Date.now()}`;
         res.json({
           success: true,
           videoUrl: fullVideoUrl,
-          message: 'Video aur Awaaz ek sath jud chuki hain!'
+          message: '15-second video generated successfully!'
         });
       })
       .on('error', (err) => {
-        console.error('FFmpeg error:', err);
-        res.status(500).json({ error: 'Audio video merge karne mein dikkat aayi.' });
+        console.error('FFmpeg merge error:', err);
+        res.status(500).json({ error: 'Audio and Video merging failed.' });
       });
 
   } catch (error) {
-    console.error('Error generating promo:', error);
+    console.error('Error:', error);
     res.status(500).json({ error: error.message || 'Server error occurred' });
   }
 });
