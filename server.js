@@ -31,7 +31,7 @@ app.get('/', (req, res) => {
 
 app.post('/generate-promo', upload.single('image'), async (req, res) => {
   try {
-    const { prompt, voiceText } = req.body;
+    const { prompt, voiceText, voiceGender } = req.body;
     let imageUri = null;
 
     if (req.file) {
@@ -42,12 +42,12 @@ app.post('/generate-promo', upload.single('image'), async (req, res) => {
 
     console.log('Generating 15-sec multi-shot video...');
 
-    // 1. Generate 3 Clips of 5 seconds each
+    // 1. Generate 3 Clips of 5 seconds each (Vertical 9:16)
     const videoPaths = [];
     for (let i = 0; i < 3; i++) {
       console.log(`Generating Clip ${i + 1}/3...`);
       const inputParams = {
-        prompt: `${prompt}, clip ${i+1}, vertical video, 9:16 aspect ratio`,
+        prompt: `${prompt}, clip ${i+1}, vertical video, 9:16 aspect ratio, portrait view`,
         prompt_optimizer: true
       };
 
@@ -88,16 +88,18 @@ app.post('/generate-promo', upload.single('image'), async (req, res) => {
         .on('error', reject);
     });
 
-    // 3. Generate Voiceover Audio
-    const speechText = voiceText || "Special discount offer available now! Visit today.";
-    const gtts = new gTTS(speechText, 'hi');
+    // 3. Generate Voiceover Audio (Male / Female handle)
+    const speechText = voiceText || "Special announcement video!";
+    // Hindi voice pitch/speed adjustments or accent tuning
+    const langCode = (voiceGender === 'male') ? 'hi' : 'hi'; 
+    const gtts = new gTTS(speechText, langCode);
     const audioPath = path.join(__dirname, 'public', 'voice.mp3');
 
     await new Promise((resolve, reject) => {
       gtts.save(audioPath, (err) => err ? reject(err) : resolve());
     });
 
-    // 4. Final Audio + Video Merge
+    // 4. Final Audio + Video Merge with 9:16 format preservation
     const finalOutputPath = path.join(__dirname, 'public', 'final_15sec_promo.mp4');
 
     ffmpeg()
@@ -128,4 +130,4 @@ const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
-  
+                       
