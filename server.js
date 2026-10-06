@@ -1,5 +1,4 @@
-
-        const express = require('express');
+const express = require('express');
 const cors = require('cors');
 const Replicate = require('replicate');
 const gTTS = require('gtts');
@@ -33,25 +32,22 @@ app.get('/', (req, res) => {
 
 app.post('/generate-promo', upload.single('image'), async (req, res) => {
   try {
-    // Prompt aur VoiceText ko sahi se read karein (Fallback ke saath)
-    const prompt = req.body && req.body.prompt ? req.body.prompt.trim() : "";
-    const voiceText = req.body && req.body.voiceText ? req.body.voiceText.trim() : "";
-    const voiceGender = req.body && req.body.voiceGender ? req.body.voiceGender : "female";
+    const prompt = (req.body && req.body.prompt) ? req.body.prompt.trim() : "";
+    const voiceText = (req.body && req.body.voiceText) ? req.body.voiceText.trim() : "";
 
     if (!prompt) {
-      return res.status(400).json({ error: "Please enter a valid video prompt." });
+      return res.status(400).json({ error: "Prompt zaroori hai! Kripya prompt box me text bharein." });
     }
 
     let imageUri = null;
     if (req.file) {
       const fileData = fs.readFileSync(req.file.path);
       imageUri = `data:${req.file.mimetype};base64,${fileData.toString('base64')}`;
-      fs.unlinkSync(req.file.path); // Clean up temp file
+      fs.unlinkSync(req.file.path);
     }
 
     console.log('Generating 15-sec multi-shot video...');
 
-    // 1. Generate 3 Clips of 5 seconds each (Vertical 9:16)
     const videoPaths = [];
     for (let i = 0; i < 3; i++) {
       console.log(`Generating Clip ${i + 1}/3...`);
@@ -80,7 +76,6 @@ app.post('/generate-promo', upload.single('image'), async (req, res) => {
       videoPaths.push(clipPath);
     }
 
-    // 2. Stitch Clips using FFmpeg
     const listFilePath = path.join(__dirname, 'public', 'files.txt');
     const fileContent = videoPaths.map(p => `file '${p}'`).join('\n');
     fs.writeFileSync(listFilePath, fileContent);
@@ -97,17 +92,14 @@ app.post('/generate-promo', upload.single('image'), async (req, res) => {
         .on('error', reject);
     });
 
-    // 3. Generate Voiceover Audio
-    const speechText = voiceText || "Special announcement video!";
-    const langCode = 'hi'; 
-    const gtts = new gTTS(speechText, langCode);
+    const speechText = voiceText || "Special promo video!";
+    const gtts = new gTTS(speechText, 'hi');
     const audioPath = path.join(__dirname, 'public', 'voice.mp3');
 
     await new Promise((resolve, reject) => {
       gtts.save(audioPath, (err) => err ? reject(err) : resolve());
     });
 
-    // 4. Final Audio + Video Merge
     const finalOutputPath = path.join(__dirname, 'public', 'final_15sec_promo.mp4');
 
     ffmpeg()
@@ -138,4 +130,6 @@ const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
+        
+
       
